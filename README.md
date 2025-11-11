@@ -169,7 +169,7 @@ chmod -R 777 monitoring/prometheus_data/
 Data stored in prometheus from the experiments can be visualized in the GUI at localhost:9090 after mounting the different experiment records folder as a read and write volume when running Prometheus docker container. As an example for AUT1, 29 bytes topic overhead.
 
 ```
-docker run -p 9090:9090  -v PATH-TO-REPLICATION-PACKAGE/transformer/logs/aut1_29b/qos1/monitoring/prometheus_data:/prometheus prom/prometheus
+docker run -p 9090:9090  -v PATH-TO-REPLICATION-PACKAGE/transformer/logs/aut1_29b/qos1/monitoring/prometheus_data:/prometheus prom/prometheus:v2.55.0
 ```
 
 ## Replication Instructions
