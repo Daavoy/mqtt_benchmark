@@ -1,0 +1,22 @@
+# NanoMQ overlay for AUT0.
+# Usage: docker compose -f docker-compose-aut0.yml -f docker-compose-aut0-nanomq.yml up
+# Set in .env: BROKER_IMAGE=emqx/nanomq:latest, BROKER_TYPE=nanomq, LOG_PATH=aut0_nanomq/qos<N>
+#
+# Prometheus scraping: NanoMQ exposes native Prometheus text format at /api/v4/prometheus
+# (requires HTTP basic auth: admin/public). Prometheus scrapes broker:8083 directly.
+# No exporter sidecar needed.
+services:
+    broker:
+        image: ${BROKER_IMAGE:-emqx/nanomq:latest}
+        volumes:
+            - ./monitoring/broker-configs/nanomq/nanomq.conf:/etc/nanomq.conf
+        ports:
+            # NanoMQ HTTP server: REST API + native Prometheus endpoint
+            - "8083:8083"
+        command: ["nanomq", "start", "--conf", "/etc/nanomq.conf"]
+        healthcheck:
+            test: ["CMD-SHELL", "wget -qO- http://localhost:8083/api/v4 2>/dev/null | grep -q 'code' && echo ok || exit 1"]
+            start_period: 45s
+            interval: 30s
+            timeout: 5s
+            retries: 5

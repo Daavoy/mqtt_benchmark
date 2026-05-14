@@ -1,0 +1,13 @@
+# json_exporter config for NanoMQ REST metrics (/api/v4/metrics)
+# Used by prometheuscommunity/json-exporter to convert NanoMQ JSON to Prometheus format.
+# NanoMQ returns: {"code":0,"data":[{"name":"bytes.received","value":N}, ...]}
+modules:
+  default:
+    metrics:
+      - name: nanomq_stat
+        type: object
+        path: "$.data[*]"
+        labels:
+          metric_name: "$.name"
+        values:
+          value: "$.value"

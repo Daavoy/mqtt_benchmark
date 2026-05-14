@@ -1,0 +1,48 @@
+# Base AUT0: single broker, no transformer pipeline.
+# Run with a broker overlay:
+#   docker compose -f docker-compose-aut0.yml -f docker-compose-aut0-hivemq.yml up
+#   docker compose -f docker-compose-aut0.yml -f docker-compose-aut0-emqx.yml up
+#   docker compose -f docker-compose-aut0.yml -f docker-compose-aut0-mosquitto.yml up
+#   docker compose -f docker-compose-aut0.yml -f docker-compose-aut0-nanomq.yml up
+#   docker compose -f docker-compose-aut0.yml -f docker-compose-aut0-rabbitmq.yml up
+# Set LOG_PATH=aut0_<broker>/qos<N> in .env before running clients.
+name: aut0
+services:
+    otel-collector:
+        networks:
+            - benchmark
+        ports:
+            - 4317:4317
+            - 8887:8887
+            - 8886:8886
+        volumes:
+            - ./monitoring/configs/otel-collector-config.yml:/etc/otel-collector-config.yaml
+        environment:
+            - OTEL_RESOURCE_ATTRIBUTES=service.name=core,service.namespace=aut
+        image: otel/opentelemetry-collector:latest
+        container_name: otel-collector
+        command: ["--config","/etc/otel-collector-config.yaml"]
+
+    # MQTT Core Broker — broker-specific config supplied via overlay file
+    broker:
+        networks:
+            - benchmark
+        image: ${BROKER_IMAGE}
+        container_name: broker
+        depends_on:
+            - otel-collector
+        ports:
+            - "1885:1883"
+        ulimits:
+            nofile:
+                soft: 500000
+                hard: 500000
+        healthcheck:
+            test: "sleep 5"
+            start_period: 30s
+
+networks:
+    benchmark:
+        external: true
+        driver: bridge
+

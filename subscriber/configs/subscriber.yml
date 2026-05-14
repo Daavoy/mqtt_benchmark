@@ -1,12 +1,26 @@
-BROKER_URL:  108.142.139.160
-BROKER_PORT: 8085
-CLIENT_ID: subscriber1
-CA_CERT: cert.pem
-TOPIC: site1/#
-QOS: ${QOS}
-TLS_ENABLED: True
+# BROKER_URL:  broker #108.142.139.160
+# BROKER_PORT: 1883 #8085
+# CLIENT_ID: subscriber1
+# #CA_CERT: cert.pem
+# TOPIC: site1/#
+# QOS: ${QOS}
+# TLS_ENABLED: False #True
+# CLEAN_START: True
+# RETAIN: False
+# REATTEMPTS: 0
+# KEEPALIVE: 60
+# TESTDATA_PATH: data/
+
+BROKER_URL: broker # 956d8d961c3c4af4ac704e372f13955b.s1.eu.hivemq.cloud
+BROKER_PORT: 1883 #8883
+TOPIC:  site1/#
+QOS: 0
+NR_OF_MESSAGES: 1000
+PUBLISH_INTERVAL: 5
 CLEAN_START: True
-RETAIN: False
-REATTEMPTS: 0
-KEEPALIVE: 60
-TESTDATA_PATH: data/
+SESSION_EXPIRY_INTERVAL: 0
+TLS_ENABLED: False #True #False #True
+REATTEMPTS: -1
+#CA_CERT: ../mqtt_benchmark/certs/server.pem
+TESTDATA_PATH: testdata/aadi
+CLIENT_ID: subscriber

@@ -1,101 +1,0 @@
-nohup: ignoring input
-Traceback (most recent call last):
-  File "/home/keli/smartoceanplatform/mqtt_benchmark/run_load.py", line 4, in <module>
-    import docker
-ModuleNotFoundError: No module named 'docker'
-nohup: ignoring input
-time="2024-11-08T02:20:48Z" level=warning msg="Found orphan containers ([mqtt_benchmark-finish-1]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
- Container provider2  Recreate
- Container provider1  Recreate
- Container provider1  Recreated
- Container provider2  Recreated
-Attaching to provider1, provider2
-[Kprovider2 exited with code 0
-[Kprovider1 exited with code 0
-time="2024-11-08T02:45:34Z" level=warning msg="Found orphan containers ([mqtt_benchmark-finish-1]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
- Container provider2  Recreate
- Container provider1  Recreate
- Container provider2  Recreated
- Container provider1  Recreated
-Attaching to provider1, provider2
-[Kprovider2 exited with code 0
-[Kprovider1 exited with code 0
- Container provider2  Recreate
- Container provider1  Recreate
- Container provider1  Recreated
- Container provider2  Recreated
-Attaching to provider1, provider2
-[Kprovider2 exited with code 0
-[Kprovider1 exited with code 0
- Container provider2  Recreate
- Container provider1  Recreate
- Container provider2  Recreated
- Container provider1  Recreated
-Attaching to provider1, provider2
-[Kprovider2 exited with code 0
-[Kprovider1 exited with code 0
- Container provider1  Recreate
- Container provider2  Recreate
- Container provider2  Recreated
- Container provider1  Recreated
-Attaching to provider1, provider2
-[Kprovider2 exited with code 0
-[Kprovider1 exited with code 0
- Container provider2  Recreate
- Container provider1  Recreate
- Container provider2  Recreated
- Container provider1  Recreated
-Attaching to provider1, provider2
-[Kprovider2 exited with code 0
-[Kprovider1 exited with code 0
- Container provider1  Recreate
- Container provider2  Recreate
- Container provider2  Recreated
- Container provider1  Recreated
-Attaching to provider1, provider2
-[Kprovider2 exited with code 0
-[Kprovider1 exited with code 0
- Container provider2  Recreate
- Container provider1  Recreate
- Container provider2  Recreated
- Container provider1  Recreated
-Attaching to provider1, provider2
-[Kprovider2 exited with code 0
-[Kprovider1 exited with code 0
- Container provider2  Recreate
- Container provider1  Recreate
- Container provider2  Recreated
- Container provider1  Recreated
-Attaching to provider1, provider2
-[Kprovider2 exited with code 0
-[Kprovider1 exited with code 0
- Container provider2  Recreate
- Container provider1  Recreate
- Container provider2  Recreated
- Container provider1  Recreated
-Attaching to provider1, provider2
-[Kprovider2 exited with code 0
-[Kprovider1 exited with code 0
-Running 10 repetitions. . .
-Docker stats recording started successfully.
-Running execution 0. . .
-Docker Compose started successfully.
-Running execution 1. . .
-Docker Compose started successfully.
-Running execution 2. . .
-Docker Compose started successfully.
-Running execution 3. . .
-Docker Compose started successfully.
-Running execution 4. . .
-Docker Compose started successfully.
-Running execution 5. . .
-Docker Compose started successfully.
-Running execution 6. . .
-Docker Compose started successfully.
-Running execution 7. . .
-Docker Compose started successfully.
-Running execution 8. . .
-Docker Compose started successfully.
-Running execution 9. . .
-Docker Compose started successfully.
-Finished execution <built-in function exec>

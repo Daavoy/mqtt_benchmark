@@ -4,13 +4,13 @@ import re
 import os
 import datetime
 
-# Experiment Parameters
-NUM_RUNS=10
+# Experiment Parameters (legacy defaults — use infer_num_runs() for actual values)
+NUM_RUNS=1
 NUM_PUB=3  # (GATEWAYS)
 NUM_QOS_CONFIG=3
 NUM_MSG=1000
 NUM_PROVIDERS=2
-NUM_HUBS=4
+NUM_HUBS=2
 total_expected_messages = NUM_MSG * NUM_HUBS * NUM_RUNS
 
 
@@ -91,6 +91,44 @@ MB2KB = 0.001
 global GB2KB
 GB2KB = 1e-6
 
+
+
+def get_numpy_array_pub_sub(logs, dates_bounds=None):
+
+    entries_list = []
+    i = 0
+    for log in logs:
+        i += 1
+        timestamp = log['timestamp']
+        send_time = float(log['send_time'])
+        rcv_time  = float(log['received_time'])
+
+        delay = rcv_time - send_time
+
+        row = [
+            np.datetime64(timestamp),
+            log['uuid'],
+            delay,
+            log['topic'],
+            int(log['size']),
+            int(log['tsize']),
+            int(log['order']),
+        ]
+
+        entries_list.append(tuple(row))
+
+    dtype = [
+        ('timestamp','datetime64[s]'),
+        ('uuid','U64'),
+        ('latency','f8'),
+        ('topic','U64'),
+        ('payload_size','i4'),
+        ('topic_size','i4'),
+        ('order','i4')
+    ]
+
+    return np.array(entries_list, dtype=dtype)
+
 def get_resources_np_array(logs, aut, qos):
     entries_list = list()
 
@@ -161,15 +199,22 @@ def get_sub_logs(log_path:str) -> list:
                         log_entry = match.groupdict()
                         filtered_messages.append(log_entry)
                     elif "site1/provider" in line and "Received message on topic:" not in line:
-                        print(line)
                         discarded_logs+=1
     print(f'Log entries: {len(filtered_messages)}')
     print(f'Discarded log entries: {discarded_logs}')
     return filtered_messages
 
 
-def get_lost_messages(logs:list):
-    return total_expected_messages-len(logs)
+def get_lost_messages(logs: list, expected: int = None) -> int:
+    """Return expected - received. Pass expected explicitly to override the global.
+
+    The module-level total_expected_messages is computed at import time and does
+    not update when NUM_RUNS is changed at runtime. Always pass expected= when
+    NUM_RUNS has been set dynamically (e.g. from infer_num_runs).
+    """
+    if expected is not None:
+        return expected - len(logs)
+    return NUM_MSG * NUM_HUBS * NUM_RUNS - len(logs)
 
 
 # Create numpy array with columns from filtered logs
@@ -182,7 +227,11 @@ def get_numpy_array(logs, t_np_array, dates_bounds):
         send_time = log['send_time']
         rcv_time  = log['received_time']
         delay = float(float(rcv_time) - float(send_time))
-        if 'site1/provider2' in log['topic'] or int(log['size']) == 518 or int(log['size']) == 1523:
+        parts = log['topic'].split('/')
+        if len(parts) >= 3 and parts[0] == 'site1' and not parts[1].startswith('provider'):
+            # AUT0 synthetic format: site1/gateway1/hub1 → gateway = 'gateway1'
+            gateway = parts[1]
+        elif 'site1/provider2' in log['topic'] or int(log['size']) == 518 or int(log['size']) == 1523:
             gateway = 'provider2.gateway1'
         elif log['topic'] == 'site1/provider1/gateway1/hub1' or int(log['size']) == 11076:
             gateway = 'provider1.gateway1'
@@ -261,22 +310,47 @@ def extract_datetime_from_filename(filename: str):
 
 def get_pub_exec_datetimes(logs):
     '''
-    Get a tuple with datetimes for the execution of each experiment repetition
-    :param logs: logs path for a specific AUT and QoS
-    :return: tuple with list of datetimes per provider
+    Get a dict of {gateway_prefix -> sorted list of execution datetimes}.
+    Handles both AUT1/AUT2 (provider*.log) and AUT0 (synthetic.gateway*.log) naming.
+    Gateway prefix is the part of the filename before the first datetime component.
     '''
-    times=dict()
+    times = dict()
+    datetime_pat = re.compile(r'\d{8}_\d{6}')
     if os.path.isdir(logs):
         for entry in os.listdir(logs):
             file = os.path.join(logs, entry)
-            if os.path.isfile(file) and entry.startswith("provider"):
-                provider = entry[:18]
-                t = extract_datetime_from_filename(entry)
-                ts = times.setdefault(provider, list())
-                ts.append(t)
-                ts.sort()
-
+            if not os.path.isfile(file):
+                continue
+            m = datetime_pat.search(entry)
+            if not m:
+                continue
+            # prefix = everything before the datetime stamp (strip trailing dot/underscore)
+            prefix = entry[:m.start()].rstrip('._')
+            if not prefix:
+                continue
+            t = extract_datetime_from_filename(entry)
+            ts = times.setdefault(prefix, list())
+            ts.append(t)
+            ts.sort()
     return times
+
+
+def infer_num_runs(pub_log_folder: str) -> int:
+    """Return the number of load executions recorded in a publisher log folder.
+
+    Two providers (provider1, provider2) each write a gateway log per execution,
+    so the same execution produces two files with the same second-precision timestamp.
+    We deduplicate by second-precision timestamp per gateway prefix so that
+    simultaneous provider writes don't inflate the count.
+    """
+    times = get_pub_exec_datetimes(pub_log_folder)
+    if not times:
+        return 1
+    counts = []
+    for ts_list in times.values():
+        unique_seconds = len({t.strftime("%Y%m%d%H%M%S") for t in ts_list})
+        counts.append(unique_seconds)
+    return max(counts)
 
 
 def get_trans_logs(log_path):
@@ -430,24 +504,47 @@ def get_stats_logs(file_path: str):
     return log_group
 
 
-def get_execs_bounds(d):
+def get_execs_bounds(d, num_runs=None):
+    """Return a sorted list of execution start timestamps (one per run).
 
-    # sanity check
-    for v in d.values():
-        assert len(v) == NUM_RUNS
+    num_runs is inferred from the data when not provided, so the function
+    works correctly regardless of how many executions were recorded.
+    """
+    if not d:
+        return []
+    if num_runs is None:
+        num_runs = max(len(v) for v in d.values())
+
     execs_boundaries = list()
-    for execution in range(NUM_RUNS):
-        for key in d.keys():
-            start_time = d[key][execution]
+    for execution in range(num_runs):
+        for key, timestamps in d.items():
+            if execution >= len(timestamps):
+                continue
+            start_time = timestamps[execution]
             if len(execs_boundaries) > execution:
-                if execs_boundaries[execution] < start_time:  # we want the load execution that finished later
+                if execs_boundaries[execution] < start_time:
                     execs_boundaries[execution] = start_time
             else:
                 execs_boundaries.append(start_time)
 
-    assert len(execs_boundaries) == NUM_RUNS
-
     return execs_boundaries
+
+
+def get_expected_msgs_per_gateway(gateway_name: str) -> int:
+    """Expected total messages from a single gateway across all recorded runs.
+
+    Legacy AUT1/AUT2: provider2 gateways had 2 hubs (×2 messages).
+    AUT0 synthetic gateways (e.g. 'gateway1', 'gateway2'): both provider1 and
+    provider2 publish to the same gateway topic, so multiplier is 2.
+    AUT1/AUT2 provider1 gateways: multiplier is 1 (single provider).
+    """
+    if not gateway_name.startswith('provider'):
+        # AUT0: both providers publish to this gateway name
+        multiplier = 2
+    else:
+        # Legacy AUT1/AUT2: provider2 had 2 hubs
+        multiplier = 2 if 'provider2' in gateway_name else 1
+    return multiplier * NUM_MSG * NUM_RUNS
 
 
 def get_np_stats(narray):

@@ -38,9 +38,21 @@ CMakeUserPresets.json
 # Experiments logs
 publisher/logs/test/*.log
 subscriber/logs/test/*.log
+transformer/logs/test/*.log
 
 # Generated credential files to deploy
 scripts/*.xml
 
-/subscriber/logs/test/
-/publisher/logs/test/
+# Raw experiment data - archive separately
+publisher/logs/aut*/
+subscriber/logs/aut*/
+transformer/logs/aut*/
+publisher/data/synthetic/
+results/*/captures/*.pcap
+results/*/captures/*.pcap.gz
+results/*/captures/*.zip
+results/*/captures/*.npz
+results/*/*_docker_stats.txt
+monitoring/prometheus_data/
+.claude/
+output.txt

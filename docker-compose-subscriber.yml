@@ -1,0 +1,45 @@
+name: subscriber
+services:
+  # subscriber:
+  #   container_name: subscriber
+  #   build:
+  #     context: ../virtualuwsn
+  #     dockerfile: Dockerfile
+  #   working_dir: /app
+  #   volumes:
+  #     - ../virtualuwsn:/app      
+  #     - ./subscriber/logs:/app/logs
+  #   entrypoint: []
+  #   command: >
+  #     python -u subscriber.py
+  #     --configfile configs/config-broker-evaluation.yml
+  #     --logfile logs/benchmark/${BROKER_TYPE}/subscriber.log
+  #   networks:
+  #     - benchmark
+
+   subscriber:
+       container_name: subscriber
+       #network_mode: host
+       env_file:
+           - .env
+       environment:
+           - QOS=${QOS}
+           - BROKER_PASSWORD=${PASSWORD2}
+           - BROKER_USERNAME=subscriber1
+       volumes:
+           - ./subscriber/configs/subscriber.yml:/app/config.yml
+           #- /etc/ssl/certs/broker.chain.pem:/etc/ssl/certs/broker.chain.pem
+           # LOG_PATH controls where logs land, e.g. aut0_hivemq/qos0 — set in .env
+           - ./subscriber/logs/${LOG_PATH}:/app/logs
+       entrypoint: ["python3"]
+       image: mqtt_client
+       command: ["subscriber.py", "--configfile", "/app/config.yml", "--logfile", "logs/subscriber.log"]
+       healthcheck:
+           test: "sleep 1"
+           start_period: 30s
+       networks:
+         - benchmark
+
+networks:
+  benchmark:
+    external: true

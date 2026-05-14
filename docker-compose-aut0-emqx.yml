@@ -1,0 +1,21 @@
+# EMQX v5 overlay for AUT0.
+# Usage: docker compose -f docker-compose-aut0.yml -f docker-compose-aut0-emqx.yml up
+# Set in .env: BROKER_IMAGE=emqx/emqx:5, BROKER_TYPE=emqx, LOG_PATH=aut0_emqx/qos<N>
+services:
+    broker:
+        image: ${BROKER_IMAGE:-emqx/emqx:latest}
+        environment:
+            - EMQX_LOG__CONSOLE__LEVEL=warning
+            # Dashboard default credentials — change for production
+            - EMQX_DASHBOARD__DEFAULT_PASSWORD=benchmark123
+            # Raise max packet size above the 1MB default so large synthetic payloads
+            # are not rejected. The MQTT protocol ceiling is 256MB (268435455 bytes).
+            - EMQX_MQTT__MAX_PACKET_SIZE=268435455
+        ports:
+            # EMQX Dashboard + Prometheus metrics endpoint (/api/v5/prometheus/stats)
+            - "18083:18083"
+        healthcheck:
+            test: ["CMD-SHELL", "emqx_ctl status | grep -q 'is running'"]
+            start_period: 40s
+            interval: 30s
+            timeout: 10s

@@ -1,17 +1,78 @@
+# # /tmp/otel-collector-config.yaml
+# receivers:
+#   otlp:
+#     protocols:
+#       grpc:
+#         endpoint: 127.0.0.1:4317 # python openTelemetry auto-instrumentation receiver
+#   # Data sources: metrics -- for HiveMQ metrics
+#   prometheus:
+#     config:
+#       scrape_configs:
+#         - job_name: otel-collector
+#           scrape_interval: 15s
+#           static_configs:
+#             - targets: [SmartOceanBenchmark:9397]  # hivemq extension ${env:BROKER}
+#   hostmetrics:
+#     collection_interval: 5m # default = 1m
+#     initial_delay: 10s # default = 1s
+#     # root_path: <string>
+#     scrapers:
+#       cpu:
+#       disk:
+#       load:
+#       filesystem:
+#       memory:
+#       network:
+#       paging:
+#       processes:
+#       process:
+
+# exporters:
+#   # NOTE: Prior to v0.86.0 use `logging` instead of `debug`.
+#   debug:
+#     verbosity: detailed
+#   file:
+#     path: ./telemetry.json
+#   # Data sources: metrics
+#   prometheus:
+#     endpoint: 0.0.0.0:8887
+#     namespace:
+
+# processors:
+#   batch:
+
+# service:
+#   pipelines:
+#     metrics:
+#       receivers: [ otlp, prometheus, hostmetrics ]
+#       exporters: [ prometheus ]
+#       processors: [ batch ]
+# #    logs:
+# #      receivers: [ otlp ]
+# #      exporters: [ debug ]
+# #      processors: [ batch ]
+#   telemetry:
+#     metrics:
+#       address: 0.0.0.0:8886
+#     logs:
+#       level: "info"
+
 # /tmp/otel-collector-config.yaml
 receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: 127.0.0.1:4317 # python openTelemetry auto-instrumentation receiver
-  # Data sources: metrics -- for HiveMQ metrics
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: otel-collector
-          scrape_interval: 15s
-          static_configs:
-            - targets: [SmartOceanBenchmark:9397]  # hivemq extension ${env:BROKER}
+        endpoint: 0.0.0.0:4317
+        #endpoint: 127.0.0.1:4317 # python openTelemetry auto-instrumentation receiver
+  # Prometheus scraping disabled — each broker exposes metrics on a different port/path.
+  # Re-enable per-broker by adding a scrape target in the broker-specific overlay compose.
+  # prometheus:
+  #   config:
+  #     scrape_configs:
+  #       - job_name: broker
+  #         scrape_interval: 15s
+  #         static_configs:
+  #           - targets: [broker:<METRICS_PORT>]
   hostmetrics:
     collection_interval: 5m # default = 1m
     initial_delay: 10s # default = 1s
@@ -44,16 +105,15 @@ processors:
 service:
   pipelines:
     metrics:
-      receivers: [ otlp, prometheus, hostmetrics ]
-      exporters: [ prometheus ]
-      processors: [ batch ]
-#    logs:
-#      receivers: [ otlp ]
-#      exporters: [ debug ]
-#      processors: [ batch ]
+      receivers: [otlp, hostmetrics]
+      exporters: [prometheus]
+      processors: [batch]
+  #    logs:
+  #      receivers: [ otlp ]
+  #      exporters: [ debug ]
+  #      processors: [ batch ]
   telemetry:
-    metrics:
-      address: 0.0.0.0:8886
+    #metrics:
+    #  address: 0.0.0.0:8886
     logs:
       level: "info"
-

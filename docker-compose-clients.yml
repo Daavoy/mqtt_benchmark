@@ -27,7 +27,9 @@ services:
 #            start_period: 30s
     provider1:
         container_name: provider1
-        network_mode: host
+        #network_mode: host
+        networks:
+            - benchmark
         env_file:
             - .env
         environment:
@@ -35,8 +37,9 @@ services:
             - BROKER_PASSWORD=${PASSWORD1}
         volumes:
             - ./publisher/configs/data_provider1.yml:/app/config.yml
+            # LOG_PATH controls where logs land, e.g. aut0_hivemq/qos0 — set in .env
             - ./publisher/logs/${LOG_PATH}:/app/logs
-            - /etc/ssl/certs/broker.chain.pem:/etc/ssl/certs/broker.chain.pem
+            #- /etc/ssl/certs/broker.chain.pem:/etc/ssl/certs/broker.chain.pem
             - ./publisher/data/provider1:/app/data/provider1
         image: mqtt_client
         command: ["--configfile", "/app/config.yml"]
@@ -45,7 +48,10 @@ services:
 #                condition: service_healthy
     provider2:
         container_name: provider2
-        network_mode: host
+        #network_mode: host
+        networks:
+            - benchmark
+
         env_file:
             - .env
         environment:
@@ -53,11 +59,16 @@ services:
             - BROKER_PASSWORD=${PASSWORD1}
         volumes:
             - ./publisher/configs/data_provider2.yml:/app/config.yml
+            # LOG_PATH controls where logs land, e.g. aut0_hivemq/qos0 — set in .env
             - ./publisher/logs/${LOG_PATH}:/app/logs
-            - /etc/ssl/certs/broker.chain.pem:/etc/ssl/certs/broker.chain.pem
+            #- /etc/ssl/certs/broker.chain.pem:/etc/ssl/certs/broker.chain.pem
             - ./publisher/data/provider2:/app/data/provider2
         image: mqtt_client
         command: ["--configfile", "/app/config.yml"]
 #        depends_on:
 #            subscriber:
 #                condition: service_healthy
+
+networks:
+  benchmark:
+    external: true

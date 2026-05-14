@@ -1,0 +1,1 @@
+{"duration_s": 10104.4, "total_bytes": 2884292981, "n_packets": 898349, "mqtt_publishes": 79970, "throughput_KB/s": 278.8, "rtt_p50_ms": 0.03, "rtt_p95_ms": 0.26, "rtt_p99_ms": 0.45, "conn_overhead_p50_ms": null, "conn_overhead_p95_ms": null, "retransmissions": 23, "retrans_rate_%": 0.003, "zero_window_events": 0, "tcp_resets": 0}

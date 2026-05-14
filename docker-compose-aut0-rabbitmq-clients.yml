@@ -1,0 +1,12 @@
+# RabbitMQ client credential override.
+# RabbitMQ uses a single user database — all MQTT clients must authenticate with
+# the same password as the default user (PASSWORD2). This overrides the publisher
+# BROKER_PASSWORD from PASSWORD1 (used for all other brokers) to PASSWORD2.
+# Applied automatically by run_load_updated.py when --broker rabbitmq is used.
+services:
+    provider1:
+        environment:
+            - BROKER_PASSWORD=${PASSWORD2}
+    provider2:
+        environment:
+            - BROKER_PASSWORD=${PASSWORD2}

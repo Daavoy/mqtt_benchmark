@@ -1,33 +1,111 @@
+# global:
+#   scrape_interval: 5s
+
+# scrape_configs:  # use host.docker.internal when isolating docker networks
+
+#   - job_name: 'ingestion-service1' # HiveMQ Ingestion Broker for provider 1
+#     Override the global default and scrape targets from this job every 5 seconds.
+#     scrape_interval: 15s
+#     metrics_path: '/metrics'
+#     static_configs:
+#       - targets: [ 'SmartOceanBenchmark:8888' ]
+
+#   - job_name: 'ingestion-service2' # HiveMQ Ingestion Broker for provider 2
+#     Override the global default and scrape targets from this job every 5 seconds.
+#     scrape_interval: 15s
+#     metrics_path: '/metrics'
+#     static_configs:
+#       - targets: [ 'SmartOceanBenchmark:8889' ]
+
+#   - job_name: 'core-service' # HiveMQ + transformers
+#     Override the global default and scrape targets from this job every 5 seconds.
+#     scrape_interval: 15s
+#     metrics_path: '/metrics'
+#     static_configs:
+#       - targets: [ 'SmartOceanBenchmark:8887' ]
+
+#   - job_name: 'core-collector' # OpenTelemetry Collector
+#     Override the global default and scrape targets from this job every 5 seconds.
+#     scrape_interval: 15s
+#     metrics_path: '/metrics'
+#     static_configs:
+#       - targets: [ 'SmartOceanBenchmark:8886' ]
+
 global:
   scrape_interval: 5s
 
-scrape_configs:  # use host.docker.internal when isolating docker networks
-
-  - job_name: 'ingestion-service1' # HiveMQ Ingestion Broker for provider 1
+scrape_configs: # use host.docker.internal when isolating docker networks
+  - job_name: "ingestion-service1" # HiveMQ Ingestion Broker for provider 1
     # Override the global default and scrape targets from this job every 5 seconds.
     scrape_interval: 15s
-    metrics_path: '/metrics'
+    scheme: http
+    metrics_path: "/metrics"
     static_configs:
-      - targets: [ 'SmartOceanBenchmark:8888' ]
+      - targets: ["ingestion-hivemq-broker2:9399"] #[ 'SmartOceanBenchmark:8888' ]
 
-  - job_name: 'ingestion-service2' # HiveMQ Ingestion Broker for provider 2
+  - job_name: "ingestion-service2" # HiveMQ Ingestion Broker for provider 2
     # Override the global default and scrape targets from this job every 5 seconds.
     scrape_interval: 15s
-    metrics_path: '/metrics'
+    scheme: http
+    metrics_path: "/metrics"
     static_configs:
-      - targets: [ 'SmartOceanBenchmark:8889' ]
+      - targets: ["ingestion-hivemq-broker2:9399"] #["SmartOceanBenchmark:8889"]
 
-  - job_name: 'core-service' # HiveMQ + transformers
+  - job_name: "core-service" # HiveMQ + transformers
     # Override the global default and scrape targets from this job every 5 seconds.
     scrape_interval: 15s
-    metrics_path: '/metrics'
+    scheme: http
+    metrics_path: "/metrics"
     static_configs:
-      - targets: [ 'SmartOceanBenchmark:8887' ]
+      - targets: ["broker-metrics:9399"] # ["SmartOceanBenchmark:8887"]
 
-  - job_name: 'core-collector' # OpenTelemetry Collector
+  - job_name: "core-collector" # OpenTelemetry Collector
     # Override the global default and scrape targets from this job every 5 seconds.
     scrape_interval: 15s
-    metrics_path: '/metrics'
+    scheme: http
+    metrics_path: "/metrics"
     static_configs:
-      - targets: [ 'SmartOceanBenchmark:8886' ]
+      - targets: ["otel-collector:8887"] #["SmartOceanBenchmark:8886"]
 
+
+  # HiveMQ (Prometheus extension)
+  - job_name: "hivemq"
+    scrape_interval: 15s
+    scheme: http
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["broker:9399"]
+
+  # EMQX
+  - job_name: "emqx"
+    scrape_interval: 15s
+    scheme: http
+    metrics_path: /api/v5/prometheus/stats
+    static_configs:
+      - targets: ["broker:18083"]
+
+  # RabbitMQ
+  - job_name: "rabbitmq"
+    scrape_interval: 15s
+    scheme: http
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["broker:15692"]
+
+  # Mosquitto exporter (iegomez/mosquitto-exporter sidecar)
+  - job_name: "mosquitto"
+    scrape_interval: 15s
+    scheme: http
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["mosquitto-exporter:9234"]
+
+  # NanoMQ — native Prometheus text format at /api/v4/prometheus (requires basic auth).
+  - job_name: "nanomq"
+    scrape_interval: 15s
+    metrics_path: /api/v4/prometheus
+    basic_auth:
+      username: admin
+      password: public
+    static_configs:
+      - targets: ["broker:8083"]

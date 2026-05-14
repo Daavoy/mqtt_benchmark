@@ -1,0 +1,29 @@
+# RabbitMQ (with MQTT plugin) overlay for AUT0.
+# Usage: docker compose -f docker-compose-aut0.yml -f docker-compose-aut0-rabbitmq.yml up
+# Set in .env: BROKER_IMAGE=rabbitmq:3-management, BROKER_TYPE=rabbitmq, LOG_PATH=aut0_rabbitmq/qos<N>
+#
+# The enabled_plugins file activates rabbitmq_mqtt and rabbitmq_prometheus at startup.
+# MQTT clients connect on port 1883 (mapped from container 1883 via the base file).
+# Default user is subscriber1 (matching .env PASSWORD2) so MQTT clients authenticate successfully.
+services:
+    broker:
+        image: ${BROKER_IMAGE:-rabbitmq:3-management}
+        environment:
+            # Use the same credentials as the benchmark subscriber (from .env)
+            # so MQTT clients can authenticate against RabbitMQ's user database.
+            - RABBITMQ_DEFAULT_USER=subscriber1
+            - RABBITMQ_DEFAULT_PASS=${PASSWORD2}
+            # Shorten startup log noise
+            - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit log [{console,[{level,warning}]}]
+        ports:
+            # RabbitMQ management UI
+            - "15672:15672"
+            # Prometheus metrics endpoint (/metrics)
+            - "15692:15692"
+        volumes:
+            - ./monitoring/broker-configs/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+        healthcheck:
+            test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+            start_period: 40s
+            interval: 30s
+            timeout: 10s

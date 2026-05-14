@@ -1,0 +1,35 @@
+# Eclipse Mosquitto overlay for AUT0.
+# Includes a mosquitto-exporter sidecar for Prometheus scraping.
+# Usage: docker compose -f docker-compose-aut0.yml -f docker-compose-aut0-mosquitto.yml up
+# Set in .env: BROKER_IMAGE=eclipse-mosquitto:2, BROKER_TYPE=mosquitto, LOG_PATH=aut0_mosquitto/qos<N>
+services:
+    broker:
+        image: ${BROKER_IMAGE:-eclipse-mosquitto:2}
+        volumes:
+            - ./monitoring/broker-configs/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+        healthcheck:
+            # Publish a null message to a test topic to verify the listener is up
+            test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -t healthcheck -n -q 0 2>/dev/null && echo ok || exit 1"]
+            start_period: 10s
+            interval: 30s
+            timeout: 5s
+
+    # Prometheus exporter sidecar — exposes Mosquitto $SYS metrics at :9234/metrics
+    mosquitto-exporter:
+        image: sapcc/mosquitto-exporter:latest
+        container_name: mosquitto-exporter
+        networks:
+            - benchmark
+        environment:
+            - BROKER_ENDPOINT=tcp://broker:1883
+        ports:
+            - "9234:9234"
+        depends_on:
+            broker:
+                condition: service_healthy
+        restart: on-failure
+
+networks:
+    benchmark:
+        external: true
+        driver: bridge
