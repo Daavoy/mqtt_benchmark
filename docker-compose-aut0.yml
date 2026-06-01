@@ -22,6 +22,11 @@ services:
         image: otel/opentelemetry-collector:latest
         container_name: otel-collector
         command: ["--config","/etc/otel-collector-config.yaml"]
+        deploy:
+            resources:
+                limits:
+                    cpus: '0.5'
+                    memory: 512mb
 
     # MQTT Core Broker — broker-specific config supplied via overlay file
     broker:
@@ -40,6 +45,11 @@ services:
         healthcheck:
             test: "sleep 5"
             start_period: 30s
+        deploy:
+            resources:
+                limits:
+                    cpus: '2.0'
+                    memory: 2G
 
 networks:
     benchmark:

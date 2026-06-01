@@ -10,6 +10,7 @@ services:
             # HiveMQ Prometheus extension metrics (mapped to host for prometheus scraping)
             - "9397:9399"
         volumes:
+            - ./monitoring/configs/hive-config.xml:/opt/hivemq/conf/config.xml
             - ./monitoring/hivemq-prometheus-extension:/opt/hivemq/extensions/hivemq-prometheus-extension
         healthcheck:
             test: ["CMD-SHELL", "sleep 5"]

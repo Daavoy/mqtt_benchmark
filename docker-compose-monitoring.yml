@@ -21,6 +21,12 @@ services:
       - ./monitoring/configs/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./monitoring/prometheus_data:/prometheus
       # - prometheus-test:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=90d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
     healthcheck:
         test: "wget --no-verbose --tries=1 --spider localhost:9090 || exit 1"
         start_period: 5s

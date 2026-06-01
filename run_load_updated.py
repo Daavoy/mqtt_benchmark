@@ -33,6 +33,7 @@ Add to data_analysis.ipynb: auts = [..., 'aut0_emqx_1kb']
 """
 import argparse
 import csv
+import json
 import os
 import signal
 import subprocess
@@ -205,7 +206,12 @@ def start_capture(pcap_path: str) -> subprocess.Popen:
 
     Returns the Popen handle, or None if the sidecar fails to start.
     """
-    os.makedirs(os.path.dirname(pcap_path) or ".", exist_ok=True)
+    pcap_dir_rel = os.path.dirname(pcap_path) or "."
+    os.makedirs(pcap_dir_rel, exist_ok=True)
+    try:
+        os.chmod(pcap_dir_rel, 0o777)
+    except PermissionError:
+        subprocess.run(["sudo", "chmod", "777", pcap_dir_rel], check=False)
     abs_pcap   = os.path.abspath(pcap_path)
     pcap_dir   = os.path.dirname(abs_pcap)
     pcap_fname = os.path.basename(abs_pcap)
@@ -320,6 +326,93 @@ def query_prometheus(prometheus_url: str, metric_names: list) -> dict:
         except Exception:
             values[metric] = None
     return values
+
+
+def query_prometheus_range(prometheus_url: str, metric_names: list,
+                           start_ts: float, end_ts: float, step: str = "15s") -> dict:
+    """Query Prometheus range API over [start_ts, end_ts] (Unix timestamps).
+
+    Returns {metric_name: data dict (Prometheus 'data' envelope) or None}.
+    Scrape interval in prometheus.yml is 15 s, so step='15s' gives one point per scrape.
+    """
+    results = {}
+    for metric in metric_names:
+        try:
+            resp = requests.get(
+                f"{prometheus_url}/api/v1/query_range",
+                params={"query": metric, "start": start_ts, "end": end_ts, "step": step},
+                timeout=15,
+            )
+            data = resp.json()
+            results[metric] = data["data"] if data.get("status") == "success" else None
+        except Exception as e:
+            print(f"  [warn] Prometheus range query failed for {metric}: {e}")
+            results[metric] = None
+    return results
+
+
+def save_prometheus_range_json(filepath: str, experiment_id: str, broker: str,
+                                payload_size: str, qos: int,
+                                start_ts: float, end_ts: float, range_data: dict):
+    """Write Prometheus range query results to a JSON file."""
+    os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
+    with open(filepath, "w") as f:
+        json.dump({
+            "experiment_id": experiment_id,
+            "broker":        broker,
+            "payload_size":  payload_size,
+            "qos":           qos,
+            "start":         start_ts,
+            "end":           end_ts,
+            "metrics":       range_data,
+        }, f, indent=2)
+    print(f"  Prometheus range data → {filepath}")
+
+
+def get_clock_offset_ms() -> float:
+    """Return estimated host clock offset in ms (positive = fast, negative = slow).
+
+    Tries chronyc, ntpq, then timedatectl (available in WSL2/systemd).
+    Returns None if no tool is available.
+    Clock offset is logged per-run to bound the systematic bias in end-to-end
+    latency measurements caused by publisher/subscriber clock skew.
+    """
+    try:
+        result = subprocess.run(["chronyc", "tracking"],
+                                capture_output=True, text=True, timeout=5)
+        for line in result.stdout.splitlines():
+            if "System time" in line:
+                parts = line.split(":")
+                if len(parts) >= 2:
+                    tokens = parts[1].strip().split()
+                    if tokens:
+                        sign = -1.0 if "slow" in line else 1.0
+                        return sign * float(tokens[0]) * 1000.0
+    except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
+        pass
+    try:
+        result = subprocess.run(["ntpq", "-p"],
+                                capture_output=True, text=True, timeout=5)
+        for line in result.stdout.splitlines():
+            if line.startswith("*"):
+                parts = line.split()
+                if len(parts) >= 9:
+                    return float(parts[8])
+    except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
+        pass
+    try:
+        result = subprocess.run(["timedatectl", "show-timesync", "--property=NTPMessage"],
+                                capture_output=True, text=True, timeout=5)
+        for line in result.stdout.splitlines():
+            if "offset=" in line:
+                # e.g. "offset=+0.123456s" or within NTPMessage=...
+                import re
+                m = re.search(r'offset=([+-]?[\d.]+)s', line)
+                if m:
+                    return float(m.group(1)) * 1000.0
+    except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
+        pass
+    return None
 
 
 def query_nanomq_rest(url: str) -> dict:
@@ -445,6 +538,10 @@ def main():
                         help="Label written to every CSV row (default: auto-generated)")
     parser.add_argument("--sleep-between", type=int, default=60, metavar="SECS",
                         help="Seconds between load executions (default: 60)")
+    parser.add_argument("--run-suffix", default=None, metavar="SUFFIX",
+                        help="Append a label to the aut_label and log path, e.g. 'test' "
+                             "produces aut0_emqx_1kb_test/qos0. Keeps test runs "
+                             "isolated from production data.")
     parser.add_argument("--no-manage-broker", action="store_true",
                         help="Skip broker start/stop (assume already running)")
     args = parser.parse_args()
@@ -495,6 +592,8 @@ def main():
     # The payload size is encoded in the aut label (like aut1_15b, aut1_29b in the paper),
     # so data_analysis.ipynb can load it by adding e.g. 'aut0_emqx_1kb' to the auts list.
     aut_label = f"aut0_{args.broker}" + (f"_{size_label}" if size_label else "")
+    if args.run_suffix:
+        aut_label += f"_{args.run_suffix}"
     log_path  = f"{aut_label}/qos{args.qos}"
 
     # Pre-create log directories with correct permissions before any container starts
@@ -545,6 +644,14 @@ def main():
     pcap_path = os.path.join(captures_dir, f"{experiment_id}.pcap")
     capture_proc = start_capture(pcap_path)
 
+    # Record clock offset and experiment start time for range query and skew logging.
+    clock_offset_ms = get_clock_offset_ms()
+    if clock_offset_ms is not None:
+        print(f"  Clock offset (NTP): {clock_offset_ms:+.3f} ms")
+    else:
+        print("  [warn] Clock offset unavailable (chronyc/ntpq not found).")
+    t_experiment_start = time.time()
+
     # ── 8. Background docker stats (record_stats.sh compatible) ──────────────────
     os.makedirs(os.path.dirname(stats_file) or ".", exist_ok=True)
     stats_proc = subprocess.Popen(
@@ -578,14 +685,15 @@ def main():
 
             # Build CSV row
             row: dict = {
-                "experiment_id": experiment_id,
-                "broker":        args.broker,
-                "payload_size":  size_label_for_path,
-                "qos":           args.qos,
-                "execution":     exec_num,
-                "timestamp":     datetime.now(timezone.utc).isoformat(),
-                "elapsed_s":     elapsed,
-                "pcap_file":     pcap_path,
+                "experiment_id":   experiment_id,
+                "broker":          args.broker,
+                "payload_size":    size_label_for_path,
+                "qos":             args.qos,
+                "execution":       exec_num,
+                "timestamp":       datetime.now(timezone.utc).isoformat(),
+                "elapsed_s":       elapsed,
+                "clock_offset_ms": clock_offset_ms,
+                "pcap_file":       pcap_path,
             }
             for k, v in prom_values.items():
                 row[f"prom_{k}"] = v
@@ -612,6 +720,7 @@ def main():
         # One Ctrl+C is enough: the loop above catches it, then we clean up fully.
         old_sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
         try:
+            t_experiment_end = time.time()
             stats_proc.kill()
             stop_capture(capture_proc)
             if capture_proc is not None:
@@ -627,6 +736,22 @@ def main():
 
             if payload_overlay and os.path.exists(payload_overlay):
                 os.remove(payload_overlay)
+
+            # Save full Prometheus time-series for this experiment window.
+            # Broker is stopped by now but Prometheus retains the data.
+            if broker_cfg["prom_metrics"]:
+                print("Saving Prometheus range data...")
+                range_data = query_prometheus_range(
+                    prom_url, broker_cfg["prom_metrics"],
+                    t_experiment_start, t_experiment_end,
+                )
+                if any(v is not None for v in range_data.values()):
+                    prom_json = os.path.join(run_dir, f"{experiment_id}_prometheus.json")
+                    save_prometheus_range_json(
+                        prom_json, experiment_id, args.broker,
+                        size_label_for_path, args.qos,
+                        t_experiment_start, t_experiment_end, range_data,
+                    )
         finally:
             signal.signal(signal.SIGINT, old_sigint)
 

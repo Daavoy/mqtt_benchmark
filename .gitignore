@@ -56,3 +56,5 @@ results/*/*_docker_stats.txt
 monitoring/prometheus_data/
 .claude/
 output.txt
+results/
+subscriber/logs/

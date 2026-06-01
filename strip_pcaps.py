@@ -23,7 +23,9 @@ SIZE_THRESHOLD_MB = 500          # only process files larger than this
 
 
 def strip(src: Path) -> Path:
-    dst = src.with_name(src.stem + "_s200" + src.suffix)
+    # Strip both suffixes for .pcap.gz so output is <name>_s200.pcap
+    stem = src.stem if src.suffix != ".gz" else Path(src.stem).stem
+    dst = src.with_name(stem + "_s200.pcap")
     if dst.exists():
         print(f"  [skip]  {dst.name} already exists")
         return dst
@@ -51,8 +53,10 @@ def strip(src: Path) -> Path:
 
 
 def main():
+    pcaps = sorted(RESULTS_DIR.glob("**/captures/*.pcap"))
+    pcaps += sorted(RESULTS_DIR.glob("**/captures/*.pcap.gz"))
     candidates = [
-        p for p in sorted(RESULTS_DIR.glob("**/captures/*.pcap"))
+        p for p in pcaps
         if not p.name.startswith("_")           # skip preflight
         and "_s200" not in p.name               # skip already-stripped
         and p.stat().st_size > SIZE_THRESHOLD_MB * 1024**2

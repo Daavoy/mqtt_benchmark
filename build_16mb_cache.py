@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-build_16mb_cache.py — extract network stats from 16MB PCAP files and write
+build_16mb_cache.py — extract network stats from large PCAP files and write
 .cache.json + .cache.npz next to each one.
 
 Run from the terminal (not Jupyter) to avoid kernel memory limits:
@@ -26,11 +26,21 @@ import numpy as np
 TSHARK = shutil.which("tshark") or "/usr/bin/tshark"
 RESULTS_DIR = Path(__file__).parent / "results"
 
+# If packet count doesn't advance by at least this many in STALL_WINDOW seconds,
+# tshark is considered stuck and will be killed (partial results are saved).
+STALL_MIN_PACKETS = 1_000
+STALL_WINDOW_S    = 120
 
-# ── Helpers (mirrors notebook cell 0e200d36) ─────────────────────────────────
+# Progress report interval in seconds
+PROGRESS_INTERVAL_S = 30
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _cache_paths(pcap):
-    base = Path(pcap).with_suffix("")
+    p = Path(pcap)
+    # Strip both suffixes for .pcap.gz (Path.with_suffix only removes one)
+    base = p.with_suffix("") if p.suffix != ".gz" else p.with_suffix("").with_suffix("")
     return base.with_suffix(".cache.json"), base.with_suffix(".cache.npz")
 
 
@@ -97,7 +107,13 @@ def extract_all(pcap):
     first_pub = {}
     timeline  = {}
 
-    last_report = time.time()
+    stalled = False
+
+    # ── timing state ──────────────────────────────────────────────────────────
+    run_start       = time.time()
+    last_report_t   = run_start      # wall time of last progress print
+    last_stall_t    = run_start      # wall time of last stall-check reset
+    last_stall_n    = 0              # packet count at last stall-check reset
 
     with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                           text=True, bufsize=1 << 20) as proc:
@@ -150,14 +166,33 @@ def extract_all(pcap):
 
             n_packets += 1
 
-            # Progress every 30 s
             now = time.time()
-            if now - last_report >= 30:
-                elapsed = now - (last_report - 30 + 30)
-                print(f"    ... {n_packets:,} packets  {pub_count} publishes  "
-                      f"{retrans} retrans  elapsed {int(time.time() - last_report + 30)}s",
-                      flush=True)
-                last_report = now
+
+            # ── progress report (every PROGRESS_INTERVAL_S wall-clock seconds) ──
+            if now - last_report_t >= PROGRESS_INTERVAL_S:
+                elapsed_total = now - run_start
+                print(
+                    f"    ... {n_packets:,} packets  {pub_count} publishes  "
+                    f"{retrans} retrans  "
+                    f"elapsed {int(elapsed_total)}s",
+                    flush=True,
+                )
+                last_report_t = now
+
+            # ── stall detection (checked every STALL_WINDOW_S seconds) ──────────
+            if now - last_stall_t >= STALL_WINDOW_S:
+                gained = n_packets - last_stall_n
+                if gained < STALL_MIN_PACKETS:
+                    print(
+                        f"\n    *** STALL: only {gained} new packets in "
+                        f"{STALL_WINDOW_S}s — killing tshark and saving partial results ***",
+                        flush=True,
+                    )
+                    proc.kill()
+                    stalled = True
+                    break
+                last_stall_n = n_packets
+                last_stall_t = now
 
     duration = (t_max - t_min) if (t_min and t_max) else 1
 
@@ -188,26 +223,30 @@ def extract_all(pcap):
         "retrans_rate_%":       round(100 * retrans / max(n_packets, 1), 3),
         "zero_window_events":   zero_win,
         "tcp_resets":           resets,
-        "rtt_arr":  rtt_arr,
-        "ovh_arr":  ovh_arr,
-        "timeline": timeline,
+        "partial":              stalled,   # flag so notebook can warn if needed
+        "rtt_arr":              rtt_arr,
+        "ovh_arr":              ovh_arr,
+        "timeline":             timeline,
     }
 
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+# ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    pcaps = sorted(RESULTS_DIR.glob("16mb/captures/*_s200.pcap"))
+    # Fixed runs: prefer _s200 trimmed copies, fall back to originals
+    pcaps = sorted(RESULTS_DIR.glob("16mb_*/captures/*_s200.pcap"))
     if not pcaps:
-        # Fall back to unstripped originals if no _s200 copies exist
-        pcaps = sorted(RESULTS_DIR.glob("16mb/captures/*.pcap"))
-        pcaps = [p for p in pcaps if "_s200" not in p.name and not p.name.startswith("_")]
+        pcaps = sorted(RESULTS_DIR.glob("16mb_*/captures/*.pcap"))
+        pcaps = [p for p in pcaps if "_s200" not in p.name]
+    # First run: .pcap.gz in results/16mb/captures/ (no _fixed/_rerun suffix)
+    pcaps += sorted((RESULTS_DIR / "16mb" / "captures").glob("*.pcap.gz"))
 
     if not pcaps:
         print(f"No 16MB PCAPs found under {RESULTS_DIR}/16mb/captures/")
         sys.exit(1)
 
-    print(f"Found {len(pcaps)} 16MB PCAP(s)\n")
+    total_mb = sum(p.stat().st_size for p in pcaps) / 1024 ** 2
+    print(f"Found {len(pcaps)} 16MB PCAP(s)  ({total_mb:,.0f} MB total)\n")
 
     for pcap in pcaps:
         label = re.match(r"([a-zA-Z]+_[^_]+)_qos", pcap.stem)
@@ -216,27 +255,39 @@ def main():
 
         jpath, _ = _cache_paths(pcap)
         if jpath.exists():
-            print(f"[skip]   {label}  ({mb:.0f} MB)  — cache already exists")
+            print(f"[skip]   {label}  ({mb:,.0f} MB)  — cache already exists")
             continue
 
-        print(f"[tshark] {label}  ({mb:.0f} MB)  — this will take ~30 min ...", flush=True)
+        if mb > 500:
+            print(
+                f"[warn]   {label} is {mb:,.0f} MB — large payloads fragment into many TCP\n"
+                f"         segments so this is expected, but tshark will take a long time.\n"
+                f"         Stall detection will auto-save and move on if tshark gets stuck.\n",
+                flush=True,
+            )
+
+        print(f"[tshark] {label}  ({mb:,.0f} MB)  — processing ...", flush=True)
         t0 = time.time()
         stats = extract_all(pcap)
         elapsed = time.time() - t0
 
         save_cache(pcap, stats)
-        print(f"         done in {elapsed/60:.1f} min  —  "
-              f"pub={stats['mqtt_publishes']}  "
-              f"retrans={stats['retransmissions']}  "
-              f"resets={stats['tcp_resets']}  "
-              f"rtt_p50={stats['rtt_p50_ms']}ms  "
-              f"conn_p50={stats['conn_overhead_p50_ms']}ms")
-        print(f"         cached → {jpath.name}\n")
+
+        partial_tag = "  *** PARTIAL (stalled) ***" if stats.get("partial") else ""
+        print(
+            f"         done in {elapsed/60:.1f} min{partial_tag}\n"
+            f"         pub={stats['mqtt_publishes']}  "
+            f"retrans={stats['retransmissions']}  "
+            f"resets={stats['tcp_resets']}  "
+            f"rtt_p50={stats['rtt_p50_ms']}ms  "
+            f"conn_p50={stats['conn_overhead_p50_ms']}ms\n"
+            f"         cached → {jpath.name}\n"
+        )
 
         del stats
         gc.collect()
 
-    print("All done. Re-run the notebook — 16MB files will load from cache instantly.")
+    print("All done. Re-run the notebook — files will load from cache instantly.")
 
 
 if __name__ == "__main__":
