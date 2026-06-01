@@ -30,7 +30,7 @@ mkdir -p "$RESULTS_DIR"
 # Ensure Prometheus data directory exists and is writable by the container
 # (Prometheus runs as nobody/65534; Docker creates the dir as root if missing)
 mkdir -p monitoring/prometheus_data
-chmod 777 monitoring/prometheus_data
+chmod 777 monitoring/prometheus_data 2>/dev/null || sudo chmod 777 monitoring/prometheus_data
 
 echo "============================================================"
 echo "  Broker comparison run"
