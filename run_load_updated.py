@@ -600,6 +600,15 @@ def main():
     # (prevents Docker from creating them as root, which would block container writes).
     _pre_create_log_dirs(log_path)
 
+    # Prometheus data directory must be writable by nobody (uid 65534).
+    # Docker creates it as root if it doesn't exist, causing Prometheus to panic.
+    prom_data = "monitoring/prometheus_data"
+    os.makedirs(prom_data, exist_ok=True)
+    try:
+        os.chmod(prom_data, 0o777)
+    except PermissionError:
+        subprocess.run(["sudo", "chmod", "777", prom_data], check=False)
+
     # ── 3. Compose environment ───────────────────────────────────────────────────
     env = os.environ.copy()
     env.update({
