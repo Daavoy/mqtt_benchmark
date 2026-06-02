@@ -27,10 +27,22 @@ fi
 
 mkdir -p "$RESULTS_DIR"
 
-# Ensure Prometheus data directory exists and is writable by the container
-# (Prometheus runs as nobody/65534; Docker creates the dir as root if missing)
-mkdir -p monitoring/prometheus_data
-chmod 777 monitoring/prometheus_data 2>/dev/null || sudo chmod 777 monitoring/prometheus_data
+# Fix ownership on all directories that Docker containers write to.
+# On a fresh clone these don't exist yet; on re-runs Docker may have created
+# them as root, making subsequent non-root writes fail.
+for dir in \
+    monitoring/prometheus_data \
+    publisher/data/synthetic \
+    publisher/logs \
+    subscriber/logs \
+    results; do
+    mkdir -p "$dir"
+done
+chmod -R 777 monitoring/prometheus_data publisher/data/synthetic \
+    publisher/logs subscriber/logs results \
+    2>/dev/null || \
+sudo chmod -R 777 monitoring/prometheus_data publisher/data/synthetic \
+    publisher/logs subscriber/logs results
 
 echo "============================================================"
 echo "  Broker comparison run"
